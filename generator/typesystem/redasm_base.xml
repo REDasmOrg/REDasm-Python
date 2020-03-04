@@ -1,0 +1,82 @@
+<?xml version="1.0"?>
+<typesystem>
+  <primitive-type name="char"/>
+  <primitive-type name="int"/>
+  <primitive-type name="bool"/>
+  <primitive-type name="size_t"/>
+  <primitive-type name="int32_t"/>"
+  <primitive-type name="int64_t"/>"
+  <primitive-type name="uint32_t"/>"
+  <primitive-type name="uint64_t"/>"
+  <primitive-type name="u8"/>
+  <primitive-type name="u16"/>
+  <primitive-type name="u32"/>
+  <primitive-type name="u64"/>
+  <primitive-type name="s8"/>
+  <primitive-type name="s16"/>
+  <primitive-type name="s32"/>
+  <primitive-type name="s64"/>
+  <primitive-type name="type_t"/>
+  <primitive-type name="flag_t"/>
+  <primitive-type name="tag_t"/>
+  <primitive-type name="address_t"/>
+  <primitive-type name="offset_t"/>
+  <primitive-type name="register_t"/>
+  <primitive-type name="instruction_id_t"/>
+
+  <rejection class="*" field-name="ID"/>
+  <rejection class="*" field-name="m_pimpl_p"/>
+  <rejection class="*" function-name="pimpl_p"/>
+
+  <namespace-type name="std" generate="no"/>
+  <namespace-type name="visit_struct" generate="no">
+    <namespace-type name="traits" generate="no"/>
+  </namespace-type>
+  <namespace-type name="nlohmann">
+    <namespace-type name="detail" generate="no"/>
+
+    <primitive-type name="json">
+      <include file-name="nlohmann/json.hpp" location="global"/>
+      <conversion-rule>
+        <native-to-target>
+        </native-to-target>
+        <target-to-native>
+          <add-conversion type="PyObject">
+          </add-conversion>
+        </target-to-native>
+      </conversion-rule>
+    </primitive-type>
+  </namespace-type>
+  <namespace-type name="cereal" generate="no"/>
+  <namespace-type name="PImplDetail" generate="no"/>
+
+  <namespace-type name="REDasm">
+    <namespace-type name="Detail" generate="no"/>
+    <modify-function signature="static_crc32(const char*)" remove="all"/>
+    <modify-function signature="static_strlen(const char*)" remove="all"/>
+    <modify-function signature="from_json(const nlohmann::json&amp; REDasm::String&amp;)" remove="all"/>
+    <modify-function signature="to_json(nlohmann::json&amp; const REDasm::String&amp;)" remove="all"/>
+
+    <primitive-type name="String">
+      <conversion-rule>
+        <native-to-target>
+          return PyUnicode_FromStringAndSize(%in.c_str(), %in.size());
+        </native-to-target>
+        <target-to-native>
+          <add-conversion type="PyObject">
+           PyObject* temp = %in;
+           if(PyUnicode_Check(temp)) temp = PyUnicode_AsUTF8String(%in);
+           else Py_INCREF(temp);
+
+           char* buffer = nullptr;
+           ssize_t size = 0;
+           PyBytes_AsStringAndSize(temp, &amp;buffer, &amp;size);
+           %out = %OUTTYPE(buffer, size);
+           Py_DECREF(temp);
+          </add-conversion>
+        </target-to-native>
+      </conversion-rule>
+    </primitive-type>
+
+  </namespace-type>
+</typesystem>

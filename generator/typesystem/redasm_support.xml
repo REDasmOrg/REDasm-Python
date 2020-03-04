@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<typesystem>
+  <namespace-type name="REDasm">
+    <object-type name="Demangler">
+      <add-function signature="demangled(const REDasm::String&amp;, bool)" return-type="REDasm::String" static="yes">
+        <modify-argument index="2">
+          <remove-argument/>
+        </modify-argument>
+      </add-function>
+      <modify-function signature="isMSVC(const REDasm::String &amp;, REDasm::String*)">
+        <modify-argument index="2">
+          <remove-argument/>
+        </modify-argument>
+      </modify-function>
+      <modify-function signature="isItanium(const REDasm::String &amp;, REDasm::String*)">
+        <modify-argument index="2">
+          <remove-argument/>
+        </modify-argument>
+      </modify-function>
+    </object-type>
+  </namespace-type>
+</typesystem>

@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<typesystem package="REDasmPython">
+  <namespace-type name="REDasm">
+    <object-type name="AbstractBuffer"/>
+  </namespace-type>
+</typesystem>

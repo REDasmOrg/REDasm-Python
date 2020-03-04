@@ -1,0 +1,9 @@
+[submodule "LibREDasm"]
+	path = LibREDasm
+	url = https://github.com/REDasmOrg/REDasm-Library.git
+[submodule "depends/pybind11"]
+	path = depends/pybind11
+	url = https://github.com/pybind/pybind11.git
+[submodule "depends/binder"]
+	path = depends/binder
+	url = https://github.com/RosettaCommons/binder.git
