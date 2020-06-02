@@ -6,25 +6,68 @@ import xml
 import sys
 
 
+def generate_lambda_binding(f):
+    lmb = "[]("
+
+    parg = None
+    args = []
+    callargs = []
+
+    for i, arg in enumerate(f["args"]):
+
+        if arg["type"].endswith("**"):
+            callargs.append("&" + arg["name"])
+            parg = arg
+            continue
+
+        callargs.append(arg["name"])
+        args.append(arg["type"] + " " + arg["name"])
+
+    lmb += ", ".join(args)
+    lmb += ") {\n"
+
+    lmb += "\t\t" + f"{parg['type'][:-1]} {parg['name']} = nullptr;" + "\n"
+    lmb += "\t\t" + f"size_t count = {f['name']}(" + ", ".join(callargs) + ");\n"
+    lmb += "\n\t\t" + f"std::vector<{parg['type'][:-1]}> c(count);" + "\n"
+    lmb += "\t\t" + f"std::copy_n(std::addressof({parg['name']}), count, c.begin());" + "\n"
+    lmb += "\t\treturn c;"
+
+    lmb += "\n\t}"
+
+    n = f["name"]
+    return "\n\t" + f'm.def("{n}", {lmb});\n'
+
+
 def generate_category(categoryname, catobj, outputdir):
     src = [f'#include "rdapi_{categoryname}.h"',
            f'#include "rdapi_all.h"',
            "\n",
            f"void bind{categoryname.capitalize()}(pybind11::module& m) {{"]
 
+    needsvector = False
+
     for f in catobj["functions"]:
         n = f["name"]
 
-        accepted = True
+        index = -1
 
-        for arg in f["args"]:
+        for i, arg in enumerate(f["args"]):
             if arg["type"].endswith("**"):
-                accepted = False
+                needsvector = True
+                index = i
+                break
 
-        if accepted:
+        if index != -1:
+            src.append(generate_lambda_binding(f))
+        else:
             src.append("\t" + f'm.def("{n}", &{n});')
 
     src.append("}")
+
+    if needsvector: # We need vector for C <-> Python array translation
+        src.insert(2, "#include <vector>")
+        src.insert(2, "#include <algorithm>")
+        src.insert(2, "#include <pybind11/stl.h>")
 
     with open(Path(outputdir, f"rdapi_{categoryname}.cpp"), "w") as f:
         f.write("\n".join(src))
