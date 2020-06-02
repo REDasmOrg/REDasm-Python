@@ -1,7 +1,7 @@
 #pragma once
 
 #include <rdapi/rdapi.h>
-#include <Python.h>
+#include <pybind11/pybind11.h>
 
 class PythonIntegration
 {
@@ -10,8 +10,11 @@ class PythonIntegration
     ~PythonIntegration();
 
   private:
-    void execPlugin(PyObject* pluginobj);
-    void loadPlugins();
-    void appendPath();
+    void addSearchPaths();
+    void loadPlugins(const std::string& pluginpath);
+    void execPlugin(pybind11::object& pluginobj);
     void findPlugins();
+
+  private:
+    pybind11::object m_rdpython; 
 };

@@ -1,76 +1,76 @@
 #include "pythonintegration.h"
-#include <pybind11/pybind11.h>
+#include <pybind11/embed.h>
+#include <filesystem>
 
 #define PYTHON_PLUGIN_FOLDER "python"
 #define PYTHON_PLUGIN_EXT    ".py"
 
+namespace fs = std::filesystem;
 namespace py = pybind11;
 
 extern "C" PyObject* PyInit_rdpython();
 
 PythonIntegration::PythonIntegration()
 {
- rd_log("Python Plugin Loaded");
- Py_Initialize();
+ py::initialize_interpreter();
+ m_rdpython = py::reinterpret_borrow<py::object>(PyInit_rdpython());
 
- if(PyInit_rdpython()) this->findPlugins();
- else rd_log("Failed to initialize the REDasmPython");
+ if(m_rdpython)
+ {
+  this->addSearchPaths();
+  this->findPlugins();
+  return;
+ }
+
+ rd_log("Failed to initialize the REDasmPython");
 }
 
-PythonIntegration::~PythonIntegration()
-{
- Py_FinalizeEx();
- rd_log("Python Plugin Unloaded");
-}
+PythonIntegration::~PythonIntegration() { py::finalize_interpreter(); }
 
-void PythonIntegration::appendPath()
+void PythonIntegration::addSearchPaths()
 {
  RD_GetPluginPaths([](const char* pluginpath, void*) {
-   PyObject* pathobj = PySys_GetObject("path");
-   rd_log(pluginpath);
-   PyList_Append(pathobj, PyUnicode_FromString(pluginpath));
+   py::object pathobj = py::module::import("sys").attr("path");
+   pathobj.attr("append")((fs::path(pluginpath) / PYTHON_PLUGIN_FOLDER).string());
    }, nullptr);
 }
 
-void PythonIntegration::execPlugin(PyObject* pluginobj)
+void PythonIntegration::execPlugin(py::object& pluginobj)
 {
- PyObject* pluginep = PyObject_GetAttrString(pluginobj, "redasm_entry");
- PyObject* result = PyObject_CallFunctionObjArgs(pluginep, nullptr);
-
- if(result) Py_DECREF(result);
- Py_DECREF(pluginep);
+  py::object pluginep = pluginobj.attr("redasm_entry");
+  if(pluginep) pluginep();
 }
 
-void PythonIntegration::loadPlugins()
+void PythonIntegration::loadPlugins(const std::string& pluginpath)
 {
- //REDasm::list_adapter_ptr<REDasm::FS::Entry> entries(REDasm::FS::recurse(pluginpath));
+ if(!fs::is_directory(pluginpath)) return;
 
- //for(size_t i = 0; i < entries->size(); i++)
- //{
- //const REDasm::FS::Entry& entry = entries->at(i);
- //if(entry.path.ext() != PYTHON_PLUGIN_EXT) continue;
+ for(const auto& item : fs::recursive_directory_iterator(pluginpath))
+ {
+  if(!fs::is_regular_file(item) && !fs::is_symlink(item)) continue;
+  if(item.path().extension() != PYTHON_PLUGIN_EXT) continue;
 
- //PyObject* pluginobj = PyImport_ImportModule(entry.path.stem().c_str());
+  try {
+   py::module pluginobj = py::module::import(item.path().stem().c_str());
+   pluginobj.add_object("rdpython", m_rdpython);
 
- //if(!pluginobj)
- //{
- //r_ctx->log("Cannot load " + entry.path.name().quoted());
- //continue;
- //}
+   if(!pluginobj)
+   {
+    rd_log("Cannot load " + item.path().string());
+    continue;
+   }
 
- //this->execPlugin(pluginobj);
- //Py_DECREF(pluginobj);
- //}
+   this->execPlugin(pluginobj);
+  } catch(py::error_already_set& e) {
+   rd_log(e.what());
+  }
+ }
 }
 
 void PythonIntegration::findPlugins()
 {
- //REDasm::list_adapter_ptr<REDasm::String> adapter(r_ctx->pluginPaths());
-
- //for(size_t i = 0; i < adapter->size(); i++)
- //{
- //REDasm::String pluginpath = REDasm::FS::Path::join(adapter->at(i), PYTHON_PLUGIN_FOLDER);
- //this->appendPath(pluginpath);
- //this->loadPlugins(pluginpath);
- //}
+ RD_GetPluginPaths([](const char* pluginpath, void* userdata) {
+   auto* thethis = reinterpret_cast<PythonIntegration*>(userdata);
+   thethis->loadPlugins(fs::path(pluginpath) / PYTHON_PLUGIN_FOLDER);
+ }, this);
 }
