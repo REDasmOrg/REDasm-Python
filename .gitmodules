@@ -7,3 +7,6 @@
 [submodule "depends/binder"]
 	path = depends/binder
 	url = https://github.com/RosettaCommons/binder.git
+[submodule "pybind11"]
+	path = pybind11
+	url = https://github.com/pybind/pybind11.git

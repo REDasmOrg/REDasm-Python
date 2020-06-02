@@ -1,8 +1,0 @@
-<?xml version="1.0"?>
-<typesystem package="REDasmPython">
-  <load-typesystem name="redasm_base.xml" generate="yes"/>
-  <load-typesystem name="redasm_support.xml" generate="yes"/>
-  <load-typesystem name="redasm_types.xml" generate="yes"/>
-  <load-typesystem name="redasm_buffer.xml" generate="yes"/>
-  <load-typesystem name="redasm_plugins.xml" generate="yes"/>
-</typesystem>

@@ -1,9 +1,9 @@
 #pragma once
 
-#include <redasm/plugins/plugin.h>
+#include <rdapi/rdapi.h>
 #include <Python.h>
 
-class PythonIntegration: public REDasm::Plugin
+class PythonIntegration
 {
   public:
     PythonIntegration();
@@ -11,7 +11,7 @@ class PythonIntegration: public REDasm::Plugin
 
   private:
     void execPlugin(PyObject* pluginobj);
-    void loadPlugins(const REDasm::String& pluginpath);
-    void appendPath(const REDasm::String& pluginpath);
+    void loadPlugins();
+    void appendPath();
     void findPlugins();
 };
