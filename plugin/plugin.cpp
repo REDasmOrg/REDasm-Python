@@ -1,10 +1,10 @@
 #include <rdapi/rdapi.h>
 #include "pythonintegration.h"
 
-static PythonIntegration rdpython;
-
 void redasm_entry()
 {
+  static PythonIntegration rdpy;
+
   RD_PLUGIN_CREATE(RDCommandPlugin, rdpython, "REDasm Python Integration");
   RDCommand_Register(&rdpython);
 }
