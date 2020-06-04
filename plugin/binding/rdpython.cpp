@@ -7,21 +7,6 @@ extern void bindRDPython(py::module&);
 
 PYBIND11_MODULE(rdpython, m)
 {
-  py::class_<RDDatabase>(m, "RDDatabase");
-  py::class_<RDContext>(m, "RDContext");
-  py::class_<RDLoader>(m, "RDLoader");
-  py::class_<RDObject>(m, "RDObject");
-  py::class_<RDBuffer>(m, "RDBuffer");
-  py::class_<RDBufferView>(m, "RDBufferView");
-  py::class_<RDBlockContainer>(m, "RDBlockContainer");
-  py::class_<RDGraph>(m, "RDGraph");
-  py::class_<RDFunctionBasicBlock>(m, "RDFunctionBasicBlock");
-  py::class_<RDCursor>(m, "RDCursor");
-  py::class_<RDDocument>(m, "RDDocument");
-  py::class_<RDDisassembler>(m, "RDDisassembler");
-  py::class_<RDRenderer>(m, "RDRenderer");
-  py::class_<RDRendererItem>(m, "RDRendererItem");
-
   py::class_<RDLocation>(m, "RDLocation")
     .def(py::init<>())
     .def_readwrite("value", &RDLocation::value)

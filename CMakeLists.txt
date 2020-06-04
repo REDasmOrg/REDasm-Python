@@ -30,7 +30,7 @@ file(GLOB_RECURSE GENERATED_HEADERS ${GENERATED_FOLDER}/*.h)
 file(GLOB_RECURSE GENERATED_SOURCES ${GENERATED_FOLDER}/*.cpp)
 
 redasm_plugin(${PROJECT_NAME} ${GENERATED_FOLDER}/rdapi_all.h ${GENERATED_HEADERS} ${GENERATED_SOURCES} ${PLUGIN_HEADERS} ${PLUGIN_SOURCES})
-target_link_libraries(${PROJECT_NAME} PRIVATE ${Python3_LIBRARIES})
+target_link_libraries(${PROJECT_NAME} PRIVATE ${Python3_LIBRARIES} pybind11::embed)
 target_include_directories(${PROJECT_NAME} PRIVATE ${Python3_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/LibREDasm ${CMAKE_SOURCE_DIR}/pybind11/include)
 
 add_dependencies(pybind11 LibREDasm)
