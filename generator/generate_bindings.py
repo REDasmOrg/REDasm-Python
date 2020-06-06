@@ -8,6 +8,18 @@ import sys
 
 skipcategories = ["macros"]
 
+def check_struct_proxies(catobj):
+    structproxies = {}
+
+    for s in catobj["structs"]:
+        for f in s["fields"]:
+            if not f["callback"]:
+                continue
+            structproxies.setdefault(s["name"], [])
+            structproxies[s["name"]].append(f)
+
+    return structproxies
+
 
 def generate_lambda_binding(f):
     lmb = "[]("
@@ -55,7 +67,6 @@ def generate_handles(catobj, src):
 
 
 def generate_enums(catobj, src):
-
     for e in catobj["enums"]:
         sl = len(e["states"])
 
@@ -78,6 +89,50 @@ def generate_enums(catobj, src):
     src.append("")
 
 
+def generate_structs(catobj, src):
+    structproxies = check_struct_proxies(catobj)
+
+    for s in catobj["structs"]:
+        fl = len(s["fields"])
+
+        if not fl:
+            continue
+
+        n = s["name"]
+
+        proxy = structproxies.get(n, None)
+
+        if proxy:
+            src.append("\t" + f'pybind11::class_<Py{n}>(m, "{n}")')
+        else:
+            src.append("\t" + f'pybind11::class_<{n}>(m, "{n}")')
+
+        src.append("\t\t" + f'.def(pybind11::init<>())')
+
+        for i, f in enumerate(s["fields"]):
+            last = i == (fl - 1)
+            fn = f["name"]
+
+            if f["arraysize"]:
+                if last:
+                    src.append("\t\t" + f'.def_readonly("{fn}", &{n}::{fn});')
+                else:
+                    src.append("\t\t" + f'.def_readonly("{fn}", &{n}::{fn})')
+            elif f["callback"]:
+                if last:
+                    src.append("\t\t" + f'.def_property("{fn}", &Py{n}::get{fn.capitalize()}, &Py{n}::set{fn.capitalize()}, pybind11::return_value_policy::reference);')
+                else:
+                    src.append("\t\t" + f'.def_property("{fn}", &Py{n}::get{fn.capitalize()}, &Py{n}::set{fn.capitalize()}, pybind11::return_value_policy::reference)')
+            else:
+                if last:
+                    src.append("\t\t" + f'.def_readwrite("{fn}", &{n}::{fn});')
+                else:
+                    src.append("\t\t" + f'.def_readwrite("{fn}", &{n}::{fn})')
+
+        src.append("")
+    src.append("")
+
+
 def generate_functions(catobj, src):
     needsvector = False
 
@@ -95,7 +150,7 @@ def generate_functions(catobj, src):
         if index != -1:
             src.append(generate_lambda_binding(f))
         else:
-            src.append("\t" + f'm.def("{n}", &{n});')
+            src.append("\t" + f'm.def("{n}", &{n}, pybind11::return_value_policy::reference);')
 
     src.append("}")
 
@@ -105,14 +160,80 @@ def generate_functions(catobj, src):
         src.insert(2, "#include <pybind11/stl.h>")
 
 
+def generate_struct_proxies(catobj, src):
+    structproxies = check_struct_proxies(catobj)
+    if not structproxies:
+        return
+
+    src.insert(2, "#include <string>")
+
+    for name, field in structproxies.items():
+        src.append(f"struct Py{name}: public {name} {{")
+
+        for f in field:  # Typedefs
+            cb = catobj["callbacks"][f["type"]]
+            argtypes = [a["type"] for a in cb["args"][1:]]
+            src.append("\t" + f"typedef std::function<{cb['ret']}(" + ", ".join(argtypes) + f")> Py{f['type']};")
+
+        src.append("")
+
+        for f in field:  # Field Proxy
+            src.append("\t" + f"pybind11::object py_{f['name']}{{pybind11::none()}}; // {f['type']}")
+
+        src.append("")
+
+        for f in field:  # Field Getters
+            src.append("\t" + f"pybind11::object get{f['name'].capitalize()}() {{ return py_{f['name']}; }}")
+
+        src.append("")
+
+        for f in field:  # Field Setters
+            cb = catobj["callbacks"][f["type"]]
+            src.append("\t" + f"void set{f['name'].capitalize()}(const pybind11::object& arg) {{ ")
+            src.append("\t\t" + f"py_{f['name']} = arg;\n")
+            src.append("\t\tif(arg) {")
+
+            if cb["args"][0]["type"].startswith("const "):
+                thistype = f"const Py{name}*"
+            else:
+                thistype = f"Py{name}*"
+
+            thisarg = cb["args"][0]["name"]
+            args = ", ".join([f"{a['type']} {a['name']}" for a in cb["args"]])
+            callargs = ", ".join([a["name"] for a in cb["args"]][1:])
+
+            if cb["ret"] == "const char*":  # Workaround for const char* callbacks
+                src.append("\t\t\t" + f"{f['name']} = []({args}) {{")
+                src.append("\t\t\t\t" + f"static std::string res;")
+                src.append("\t\t\t\t" + f"res = static_cast<{thistype}>({thisarg})->py_{f['name']}({callargs}).cast<std::string>(); ")
+                src.append("\t\t\t\t" + f"return res.c_str();")
+                src.append("\t\t\t};")
+            elif cb["ret"] == "void":
+                src.append("\t\t\t" + f"{f['name']} = []({args}) {{ static_cast<{thistype}>({thisarg})->py_{f['name']}({callargs}); }};")
+            else:
+                src.append("\t\t\t" + f"{f['name']} = []({args}) -> {cb['ret']} {{ return static_cast<{thistype}>({thisarg})->py_{f['name']}({callargs}).cast<{cb['ret']}>(); }};")
+
+            src.append("\t\t}")
+            src.append("\t\telse")
+            src.append(f"\t\t\t{f['name']} = nullptr;")
+            src.append("\t}\n")
+
+        src.append("};\n")
+
+    src.append("")
+
+
 def generate_category(categoryname, catobj, outputdir):
     src = [f'#include "rdapi_{categoryname}.h"',
            f'#include "rdapi_all.h"',
-           "\n",
-           f"void bind{categoryname.capitalize()}(pybind11::module& m) {{"]
+           "\n"]
+
+    generate_struct_proxies(catobj, src)
+    src.append(f"void bind{categoryname.capitalize()}(pybind11::module& m) {{")
 
     generate_handles(catobj, src)
     generate_enums(catobj, src)
+    generate_structs(catobj, src)
     generate_functions(catobj, src)
 
     with open(Path(outputdir, f"rdapi_{categoryname}.cpp"), "w") as f:
