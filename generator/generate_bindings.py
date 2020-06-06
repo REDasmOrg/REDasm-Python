@@ -7,6 +7,7 @@ import sys
 
 
 skipcategories = ["macros"]
+apiblacklist = {"RDEvent_Unsubscribe"}
 allcallbacks = {}
 
 
@@ -59,6 +60,29 @@ def generate_lambda_binding(f):
 
     n = f["name"]
     return "\n\t" + f'm.def("{n}", {lmb});\n'
+
+
+# def generate_callback_binding(f):
+#     return ""
+#     global allcallbacks
+#     n = f["name"]
+#     args = []
+# 
+#     for a in f["args"]:
+#         cb = allcallbacks.get(a["type"], None)
+# 
+#         if cb:
+#             argtypes = [f"{ca['type']}" for ca in cb["args"]]
+#             args.append(f"const std::function<{cb['ret']}(" + ", ".join(argtypes) + f")>& {a['name']}")
+#         else:
+#             args.append(f"{a['type']} {a['name']}")
+# 
+#     lmb = "[](" + ", ".join(args) + ") {\n"
+#     argnames = [f"{a['name']}" for a in f["args"]]
+#     lmb += "\t\t" + f"return {n}(" + ", ".join(argnames) + ");\n"
+#     lmb += "\t}"
+# 
+#     return "\n\t" + f'm.def("{n}", {lmb});\n'
 
 
 def generate_handles(catobj, src):
@@ -137,21 +161,35 @@ def generate_structs(catobj, src):
 
 
 def generate_functions(catobj, src):
+    global allcallbacks
+    global apiblacklist
+
     needsvector = False
+    needsfunctional = False
 
     for f in catobj["functions"]:
         n = f["name"]
 
-        index = -1
+        if n in apiblacklist:
+            print(f"Skipping {n} from autogeneration")
+            continue
+
+        vindex = -1
+        findex = -1
 
         for i, arg in enumerate(f["args"]):
             if arg["type"].endswith("**"):
                 needsvector = True
-                index = i
-                break
+                vindex = i
+            elif allcallbacks.get(arg["type"], None):
+                needsfunctional = True
+                findex = i
 
-        if index != -1:
+        if vindex != -1:
             src.append(generate_lambda_binding(f))
+        elif findex != -1:
+            print(f"Skipping {f['name']} from autogeneration")
+            #src.append(generate_callback_binding(f))
         else:
             src.append("\t" + f'm.def("{n}", &{n}, pybind11::return_value_policy::reference);')
 
@@ -161,6 +199,10 @@ def generate_functions(catobj, src):
         src.insert(2, "#include <vector>")
         src.insert(2, "#include <algorithm>")
         src.insert(2, "#include <pybind11/stl.h>")
+
+    if needsfunctional:  # We need function for C <-> Python callback translation
+        src.insert(2, "#include <functional>")
+        src.insert(2, "#include <pybind11/functional.h>")
 
 
 def generate_struct_proxies(catobj, src):
@@ -299,7 +341,6 @@ def generate_bindings(docfilepath, outputdir):
 
         generate_category_header(lccategory, obj, outputdir)
         generate_category_source(lccategory, obj, outputdir)
-
 
     generate_rdpython(jsondoc, outputdir)
 
