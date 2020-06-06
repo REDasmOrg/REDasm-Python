@@ -7,6 +7,8 @@ import sys
 
 
 skipcategories = ["macros"]
+allcallbacks = {}
+
 
 def check_struct_proxies(catobj):
     structproxies = {}
@@ -103,7 +105,8 @@ def generate_structs(catobj, src):
         proxy = structproxies.get(n, None)
 
         if proxy:
-            src.append("\t" + f'pybind11::class_<Py{n}>(m, "{n}")')
+            src.append("\t" + f'pybind11::class_<{n}> cpp{n.lower()}(m, "Cpp{n}");')  # Make binding aware of the C++ Type
+            src.append("\t" + f'pybind11::class_<Py{n}>(m, "{n}", cpp{n.lower()})')
         else:
             src.append("\t" + f'pybind11::class_<{n}>(m, "{n}")')
 
@@ -161,17 +164,19 @@ def generate_functions(catobj, src):
 
 
 def generate_struct_proxies(catobj, src):
-    structproxies = check_struct_proxies(catobj)
-    if not structproxies:
+    global allcallbacks
+
+    localstructproxies = check_struct_proxies(catobj)
+    if not localstructproxies:
         return
 
     src.insert(2, "#include <string>")
 
-    for name, field in structproxies.items():
+    for name, field in localstructproxies.items():
         src.append(f"struct Py{name}: public {name} {{")
 
         for f in field:  # Typedefs
-            cb = catobj["callbacks"][f["type"]]
+            cb = allcallbacks[f["type"]]
             argtypes = [a["type"] for a in cb["args"][1:]]
             src.append("\t" + f"typedef std::function<{cb['ret']}(" + ", ".join(argtypes) + f")> Py{f['type']};")
 
@@ -188,7 +193,7 @@ def generate_struct_proxies(catobj, src):
         src.append("")
 
         for f in field:  # Field Setters
-            cb = catobj["callbacks"][f["type"]]
+            cb = allcallbacks[f["type"]]
             src.append("\t" + f"void set{f['name'].capitalize()}(const pybind11::object& arg) {{ ")
             src.append("\t\t" + f"py_{f['name']} = arg;\n")
             src.append("\t\tif(arg) {")
@@ -205,13 +210,13 @@ def generate_struct_proxies(catobj, src):
             if cb["ret"] == "const char*":  # Workaround for const char* callbacks
                 src.append("\t\t\t" + f"{f['name']} = []({args}) {{")
                 src.append("\t\t\t\t" + f"static std::string res;")
-                src.append("\t\t\t\t" + f"res = static_cast<{thistype}>({thisarg})->py_{f['name']}({callargs}).cast<std::string>(); ")
+                src.append("\t\t\t\t" + f"res = reinterpret_cast<{thistype}>({thisarg})->py_{f['name']}({callargs}).cast<std::string>(); ")
                 src.append("\t\t\t\t" + f"return res.c_str();")
                 src.append("\t\t\t};")
             elif cb["ret"] == "void":
-                src.append("\t\t\t" + f"{f['name']} = []({args}) {{ static_cast<{thistype}>({thisarg})->py_{f['name']}({callargs}); }};")
+                src.append("\t\t\t" + f"{f['name']} = []({args}) {{ reinterpret_cast<{thistype}>({thisarg})->py_{f['name']}({callargs}); }};")
             else:
-                src.append("\t\t\t" + f"{f['name']} = []({args}) -> {cb['ret']} {{ return static_cast<{thistype}>({thisarg})->py_{f['name']}({callargs}).cast<{cb['ret']}>(); }};")
+                src.append("\t\t\t" + f"{f['name']} = []({args}) -> {cb['ret']} {{ return reinterpret_cast<{thistype}>({thisarg})->py_{f['name']}({callargs}).cast<{cb['ret']}>(); }};")
 
             src.append("\t\t}")
             src.append("\t\telse")
@@ -223,12 +228,11 @@ def generate_struct_proxies(catobj, src):
     src.append("")
 
 
-def generate_category(categoryname, catobj, outputdir):
+def generate_category_source(categoryname, catobj, outputdir):
     src = [f'#include "rdapi_{categoryname}.h"',
            f'#include "rdapi_all.h"',
            "\n"]
 
-    generate_struct_proxies(catobj, src)
     src.append(f"void bind{categoryname.capitalize()}(pybind11::module& m) {{")
 
     generate_handles(catobj, src)
@@ -262,12 +266,30 @@ def generate_rdpython(jsondoc, outputdir):
         f.write("}")
 
 
+def generate_category_header(categoryname, catobj, outputdir):
+    src = ["#pragma once\n",
+           "#include <pybind11/pybind11.h>",
+           "#include <rdapi/rdapi.h>"]
+
+    generate_struct_proxies(catobj, src)
+    src.append(f"void bind{categoryname.capitalize()}(pybind11::module& m);")
+
+    with open(Path(outputdir, f"rdapi_{categoryname}.h"), "w") as f:
+        f.write("\n".join(src))
+
+
 def generate_bindings(docfilepath, outputdir):
+    global allcallbacks
+
     with open(docfilepath, "r") as f:
         jsondoc = json.load(f)
 
     outdir = Path(outputdir)
     outdir.mkdir(parents=True, exist_ok=True)
+
+    # Preload all callbacks
+    for category, obj in jsondoc["categories"].items():
+        allcallbacks.update(obj["callbacks"])
 
     for category, obj in jsondoc["categories"].items():
         lccategory = category.lower()
@@ -275,12 +297,9 @@ def generate_bindings(docfilepath, outputdir):
         if lccategory in skipcategories:
             continue
 
-        with open(Path(outdir, f"rdapi_{lccategory}.h"), "w") as f:
-            f.write("#pragma once\n\n")
-            f.write("#include <pybind11/pybind11.h>\n\n")
-            f.write(f"void bind{category}(pybind11::module& m);")
+        generate_category_header(lccategory, obj, outputdir)
+        generate_category_source(lccategory, obj, outputdir)
 
-        generate_category(lccategory, obj, outputdir)
 
     generate_rdpython(jsondoc, outputdir)
 
